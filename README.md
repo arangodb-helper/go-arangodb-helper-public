@@ -1,1 +1,1 @@
-# go-arangodb-helper-public
+# go-helper

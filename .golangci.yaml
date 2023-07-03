@@ -1,0 +1,31 @@
+---
+
+run:
+  issues-exit-code: 3
+  timeout: 30m
+  skip-dirs:
+    - vendor
+
+linters:
+  fast: false
+  enable-all: false
+  disable-all: false
+  presets:
+    - performance
+    - format
+    - complexity
+    - bugs
+    - unused
+  disable:
+    - staticcheck
+    - govet
+    - contextcheck
+    - exhaustive
+    - musttag # seems to be broken
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/arangodb)
+      - prefix(github.com/arangodb-helper/go-helper)
