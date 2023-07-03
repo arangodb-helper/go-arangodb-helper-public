@@ -24,3 +24,15 @@ package refs
 func NewType[T interface{}](input T) *T {
 	return &input
 }
+
+// TypeOrDefault returns the default value (or T default value) if input is nil, otherwise returns the referenced value.
+func TypeOrDefault[T any](input *T, defaultValue ...T) T {
+	if input == nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		var def T
+		return def
+	}
+	return *input
+}
