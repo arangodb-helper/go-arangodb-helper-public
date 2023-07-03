@@ -11,18 +11,6 @@ SOURCES := $(shell find $(ROOT_DIR) -name '*.go')
 TEST_IMAGE_NAME ?= $(DOCKER_NAMESPACE)/$(REPO_NAME)
 TEST_IMAGE_TAG ?= latest
 TEST_IMAGE ?= $(TEST_IMAGE_NAME):$(TEST_IMAGE_TAG)
-TEST_SOURCES := $(shell find $(ROOT_DIR)/tests -name '*.go')
-
-.PHONY: docker
-docker: $(TEST_SOURCES)
-ifeq ("$(TEST_DEBUG)", "true")
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -f tests/Dockerfile.debug -t $(TEST_IMAGE) .
-else
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -f tests/Dockerfile -t $(TEST_IMAGE) .
-endif
-
-run-tests: docker
-	TEST_DEBUG="$(TEST_DEBUG)" TEST_IMAGE="$(TEST_IMAGE)" TEST_OPTIONS="$(TEST_OPTIONS)" ./scripts/cluster.sh tests
 
 
 .PHONY: run-unit-tests
