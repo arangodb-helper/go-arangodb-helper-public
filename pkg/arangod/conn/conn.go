@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type Connection interface {
@@ -61,4 +62,34 @@ func (c connection) Execute(ctx context.Context, method string, endpoint string,
 	}
 
 	return nil, resp.StatusCode, nil
+}
+
+// ConnectionConfig describes how connection can be created.
+type ConnectionConfig struct {
+	// host is address to a server.
+	Host string
+	// auth is a pure jwt bearer token: "bearer <jwt_token>"
+	Auth *string
+	// ConnWrapper wraps original network connection with an additional functionality provided by a caller.
+	ConnWrapper TransportConnWrap
+}
+
+func NewConnection(c ConnectionConfig) Connection {
+	return connection{
+		auth: c.Auth,
+		host: c.Host,
+		client: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				DialContext:           NewContextDialer(c.ConnWrapper).DialContext,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       100 * time.Millisecond,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}
 }
