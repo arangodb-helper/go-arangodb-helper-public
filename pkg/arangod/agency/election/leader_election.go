@@ -134,7 +134,7 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, value T) (T, bool, t
 	}
 }
 
-// Resign tries to resign leadership
+// Resign tries to resign leadership. If error is returned, caller should retry
 func (l *LeaderElectionCell[T]) Resign(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -148,5 +148,10 @@ func (l *LeaderElectionCell[T]) Resign(ctx context.Context) error {
 	key := append(l.key, "ttl")
 	trx.AddCondition(key, agency.NewConditionIfEqual(l.lastTTL))
 	trx.AddKey(agency.NewKeyDelete(l.key))
-	return l.agency.WriteTransaction(ctx, trx)
+	err := l.agency.WriteTransaction(ctx, trx)
+	if err != nil && driver.IsPreconditionFailed(err) {
+		//  we're no longer the leader
+		return nil
+	}
+	return err
 }
