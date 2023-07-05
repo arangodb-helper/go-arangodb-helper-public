@@ -40,12 +40,12 @@ type Lock interface {
 	// Lock tries to lock the lock.
 	// If it is not possible to lock, an error is returned.
 	// If the lock is already held by me, an error is returned.
-	Lock(ctx context.Context) error
+	Lock(ctx context.Context, cli agency.Agency) error
 
 	// Unlock tries to unlock the lock.
 	// If it is not possible to unlock, an error is returned.
 	// If the lock is not held by me, an error is returned.
-	Unlock(ctx context.Context) error
+	Unlock(ctx context.Context, cli agency.Agency) error
 
 	// IsLocked return true if the lock is held by me.
 	IsLocked() bool
@@ -57,7 +57,7 @@ type Logger interface {
 }
 
 // NewLock creates a new lock on the given key.
-func NewLock(log Logger, api agency.Agency, key []string, id string, ttl time.Duration) (Lock, error) {
+func NewLock(log Logger, key []string, id string, ttl time.Duration) (Lock, error) {
 	if ttl < minLockTTL {
 		ttl = minLockTTL
 	}
@@ -72,7 +72,7 @@ func NewLock(log Logger, api agency.Agency, key []string, id string, ttl time.Du
 	return &lock{
 		log:  log,
 		id:   id,
-		cell: NewLeaderElectionCell[string](api, key, ttl),
+		cell: NewLeaderElectionCell[string](key, ttl),
 	}, nil
 }
 
@@ -89,7 +89,7 @@ type lock struct {
 // Lock tries to lock the lock.
 // If it is not possible to lock, an error is returned.
 // If the lock is already held by me, an error is returned.
-func (l *lock) Lock(ctx context.Context) error {
+func (l *lock) Lock(ctx context.Context, cli agency.Agency) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -97,7 +97,7 @@ func (l *lock) Lock(ctx context.Context) error {
 		return driver.WithStack(AlreadyLockedError)
 	}
 
-	_, isLocked, nextUpdateIn, err := l.cell.Update(ctx, l.id)
+	_, isLocked, nextUpdateIn, err := l.cell.Update(ctx, cli, l.id)
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (l *lock) Lock(ctx context.Context) error {
 
 	// Keep renewing
 	renewCtx, renewCancel := context.WithCancel(context.Background())
-	go l.renewLock(renewCtx, nextUpdateIn)
+	go l.renewLock(renewCtx, cli, nextUpdateIn)
 	l.cancelRenewal = renewCancel
 
 	return nil
@@ -118,7 +118,7 @@ func (l *lock) Lock(ctx context.Context) error {
 // Unlock tries to unlock the lock.
 // If it is not possible to unlock, an error is returned.
 // If the lock is not held by me, an error is returned.
-func (l *lock) Unlock(ctx context.Context) error {
+func (l *lock) Unlock(ctx context.Context, cli agency.Agency) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -126,7 +126,7 @@ func (l *lock) Unlock(ctx context.Context) error {
 		return driver.WithStack(NotLockedError)
 	}
 
-	err := l.cell.Resign(ctx)
+	err := l.cell.Resign(ctx, cli)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (l *lock) IsLocked() bool {
 }
 
 // renewLock keeps renewing the lock until the given context is canceled.
-func (l *lock) renewLock(ctx context.Context, delay time.Duration) {
+func (l *lock) renewLock(ctx context.Context, cli agency.Agency, delay time.Duration) {
 	op := func() (bool, time.Duration, error) {
 		l.mutex.Lock()
 		defer l.mutex.Unlock()
@@ -158,7 +158,7 @@ func (l *lock) renewLock(ctx context.Context, delay time.Duration) {
 			return true, 0, nil
 		}
 
-		_, stillLeading, newDelay, err := l.cell.Update(ctx, l.id)
+		_, stillLeading, newDelay, err := l.cell.Update(ctx, cli, l.id)
 		return stillLeading, newDelay, err
 	}
 	for {

@@ -28,9 +28,8 @@ import (
 	"github.com/arangodb/go-driver/agency"
 )
 
-func NewLeaderElectionCell[T comparable](c agency.Agency, key []string, ttl time.Duration) *LeaderElectionCell[T] {
+func NewLeaderElectionCell[T comparable](key []string, ttl time.Duration) *LeaderElectionCell[T] {
 	return &LeaderElectionCell[T]{
-		agency:  c,
 		lastTTL: 0,
 		leading: false,
 		key:     key,
@@ -39,7 +38,6 @@ func NewLeaderElectionCell[T comparable](c agency.Agency, key []string, ttl time
 }
 
 type LeaderElectionCell[T comparable] struct {
-	agency  agency.Agency
 	lastTTL int64
 	leading bool
 	key     []string
@@ -51,7 +49,7 @@ type leaderStruct[T comparable] struct {
 	TTL  int64 `json:"ttl,omitempty"`
 }
 
-func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, value T, assumeEmpty bool) error {
+func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, cli agency.Agency, value T, assumeEmpty bool) error {
 	trx := agency.NewTransaction("", agency.TransactionOptions{})
 
 	newTTL := time.Now().Add(l.ttl).Unix()
@@ -63,7 +61,7 @@ func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, value T, as
 		trx.AddCondition(key, agency.NewConditionIfEqual(l.lastTTL))
 	}
 
-	if err := l.agency.WriteTransaction(ctx, trx); err == nil {
+	if err := cli.WriteTransaction(ctx, trx); err == nil {
 		l.lastTTL = newTTL
 		l.leading = true
 	} else {
@@ -73,12 +71,12 @@ func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, value T, as
 	return nil
 }
 
-func (l *LeaderElectionCell[T]) Read(ctx context.Context) (T, error) {
+func (l *LeaderElectionCell[T]) Read(ctx context.Context, cli agency.Agency) (T, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	var result leaderStruct[T]
-	if err := l.agency.ReadKey(ctx, l.key, &result); err != nil {
+	if err := cli.ReadKey(ctx, l.key, &result); err != nil {
 		var def T
 		if agency.IsKeyNotFound(err) {
 			return def, nil
@@ -91,13 +89,13 @@ func (l *LeaderElectionCell[T]) Read(ctx context.Context) (T, error) {
 // Update checks the current leader cell and if no leader is present
 // it tries to put itself in there. Will return the value currently present,
 // whether we are leader and a duration after which Updated should be called again.
-func (l *LeaderElectionCell[T]) Update(ctx context.Context, value T) (T, bool, time.Duration, error) {
+func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, value T) (T, bool, time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for {
 		assumeEmpty := false
 		var result leaderStruct[T]
-		if err := l.agency.ReadKey(ctx, l.key, &result); err != nil {
+		if err := cli.ReadKey(ctx, l.key, &result); err != nil {
 			if agency.IsKeyNotFound(err) {
 				assumeEmpty = true
 				goto tryLeaderElection
@@ -125,7 +123,7 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, value T) (T, bool, t
 		}
 
 	tryLeaderElection:
-		if err := l.tryBecomeLeader(ctx, value, assumeEmpty); err == nil {
+		if err := l.tryBecomeLeader(ctx, cli, value, assumeEmpty); err == nil {
 			return value, true, l.ttl / 2, nil
 		} else if !driver.IsPreconditionFailed(err) {
 			var def T
@@ -135,7 +133,7 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, value T) (T, bool, t
 }
 
 // Resign tries to resign leadership. If error is returned, caller should retry
-func (l *LeaderElectionCell[T]) Resign(ctx context.Context) error {
+func (l *LeaderElectionCell[T]) Resign(ctx context.Context, cli agency.Agency) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -148,7 +146,7 @@ func (l *LeaderElectionCell[T]) Resign(ctx context.Context) error {
 	key := append(l.key, "ttl")
 	trx.AddCondition(key, agency.NewConditionIfEqual(l.lastTTL))
 	trx.AddKey(agency.NewKeyDelete(l.key))
-	err := l.agency.WriteTransaction(ctx, trx)
+	err := cli.WriteTransaction(ctx, trx)
 	if err != nil && driver.IsPreconditionFailed(err) {
 		//  we're no longer the leader
 		return nil
