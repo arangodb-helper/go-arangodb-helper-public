@@ -28,6 +28,11 @@ import (
 	"github.com/arangodb/go-driver/agency"
 )
 
+const (
+	keyData = "data"
+	keyTTL  = "ttl"
+)
+
 func NewLeaderElectionCell[T comparable](key []string, ttl time.Duration) *LeaderElectionCell[T] {
 	return &LeaderElectionCell[T]{
 		lastTTL: 0,
@@ -45,8 +50,15 @@ type LeaderElectionCell[T comparable] struct {
 }
 
 type leaderStruct[T comparable] struct {
-	Data T     `json:"data,omitempty"`
-	TTL  int64 `json:"ttl,omitempty"`
+	Data T     `json:"data,omitempty"` // keyData
+	TTL  int64 `json:"ttl,omitempty"`  // keyTTL
+}
+
+// GetLeaderCondition creates a condition which is resolved to true only if current value in agency equals provided dataValue
+func (l *LeaderElectionCell[T]) GetLeaderCondition(dataValue T) agency.ConditionsMap {
+	return agency.ConditionsMap{
+		createFullKey(append(l.key, keyData)): agency.NewConditionIfEqual(dataValue),
+	}
 }
 
 func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, cli agency.Agency, value T, assumeEmpty bool) error {
@@ -57,7 +69,7 @@ func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, cli agency.
 	if assumeEmpty {
 		trx.AddCondition(l.key, agency.NewConditionOldEmpty(true))
 	} else {
-		key := append(l.key, "ttl")
+		key := append(l.key, keyTTL)
 		trx.AddCondition(key, agency.NewConditionIfEqual(l.lastTTL))
 	}
 
@@ -143,7 +155,7 @@ func (l *LeaderElectionCell[T]) Resign(ctx context.Context, cli agency.Agency) e
 	}
 	l.leading = false
 	trx := agency.NewTransaction("", agency.TransactionOptions{})
-	key := append(l.key, "ttl")
+	key := append(l.key, keyTTL)
 	trx.AddCondition(key, agency.NewConditionIfEqual(l.lastTTL))
 	trx.AddKey(agency.NewKeyDelete(l.key))
 	err := cli.WriteTransaction(ctx, trx)
