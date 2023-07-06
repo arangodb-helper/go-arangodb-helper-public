@@ -27,8 +27,10 @@ import (
 )
 
 var (
-	Cause = errs.Cause
-	New   = errs.New
+	Cause        = errs.Cause
+	New          = errs.New
+	WithMessage  = errs.WithMessage
+	WithMessagef = errs.WithMessagef
 )
 
 // CauseWithNil returns Cause of an error.
