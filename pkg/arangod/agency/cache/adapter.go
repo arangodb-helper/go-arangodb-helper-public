@@ -66,13 +66,15 @@ func (a *driverV1AgencyAdapter) Execute(ctx context.Context, method string, endp
 	if err != nil {
 		return nil, 0, errors.WithMessage(err, "NewRequest failed)")
 	}
-	requestBody, err := io.ReadAll(body) // driver v1 connection does not support io.Reader as input
-	if err != nil {
-		return nil, 0, errors.WithMessage(err, "ReadAll failed for request body")
-	}
-	req, err = req.SetBody(requestBody)
-	if err != nil {
-		return nil, 0, errors.WithMessage(err, "SetBody failed")
+	if body != nil {
+		requestBody, err := io.ReadAll(body) // driver v1 connection does not support io.Reader as input
+		if err != nil {
+			return nil, 0, errors.WithMessage(err, "ReadAll failed for request body")
+		}
+		req, err = req.SetBody(requestBody)
+		if err != nil {
+			return nil, 0, errors.WithMessage(err, "SetBody failed")
+		}
 	}
 
 	var rawResponse []byte
@@ -80,5 +82,10 @@ func (a *driverV1AgencyAdapter) Execute(ctx context.Context, method string, endp
 	if err != nil {
 		return nil, 0, errors.WithMessage(err, "Do failed")
 	}
+
+	if len(rawResponse) == 0 {
+		return nil, resp.StatusCode(), nil
+	}
+
 	return io.NopCloser(bytes.NewBuffer(rawResponse)), resp.StatusCode(), nil
 }
