@@ -83,9 +83,5 @@ func (a *driverV1AgencyAdapter) Execute(ctx context.Context, method string, endp
 		return nil, 0, errors.WithMessage(err, "Do failed")
 	}
 
-	if len(rawResponse) == 0 {
-		return nil, resp.StatusCode(), nil
-	}
-
-	return io.NopCloser(bytes.NewBuffer(rawResponse)), resp.StatusCode(), nil
+	return io.NopCloser(bytes.NewReader(rawResponse)), resp.StatusCode(), nil
 }
