@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/arangodb-helper/go-helper/pkg/errors"
 	"github.com/arangodb-helper/go-helper/pkg/metrics/nctx"
 )
 
@@ -51,7 +52,7 @@ func (e executor[IN, OUT]) Execute(ctx context.Context, method string, endpoint 
 	if q := reflect.ValueOf(in); q.IsValid() && !q.IsZero() && !q.IsNil() {
 		data, err := json.Marshal(in)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, errors.WithMessage(err, "Marshal failed")
 		}
 
 		reader = bytes.NewReader(data)
@@ -59,7 +60,7 @@ func (e executor[IN, OUT]) Execute(ctx context.Context, method string, endpoint 
 
 	resp, code, err := e.conn.Execute(ctx, method, endpoint, reader)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, errors.WithMessagef(err, "Execute %T failed", e.conn)
 	}
 
 	if resp == nil {
@@ -71,10 +72,10 @@ func (e executor[IN, OUT]) Execute(ctx context.Context, method string, endpoint 
 	var out OUT
 
 	if err := json.NewDecoder(nctx.WithRequestReadBytes(ctx, resp)).Decode(&out); err != nil {
-		return nil, 0, err
+		return nil, 0, errors.WithMessage(err, "json Decode failed")
 	}
 
-	return &out, code, err
+	return &out, code, nil
 }
 
 type Executor[IN, OUT interface{}] interface {

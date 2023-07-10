@@ -31,6 +31,7 @@ var (
 	New          = errs.New
 	WithMessage  = errs.WithMessage
 	WithMessagef = errs.WithMessagef
+	WithStack    = errs.WithStack
 )
 
 // CauseWithNil returns Cause of an error.
