@@ -102,6 +102,7 @@ func (l *LeaderElectionCell[T]) Read(ctx context.Context, cli agency.Agency) (T,
 // it tries to put itself in there. Will return the value currently present,
 // whether we are leader and a duration after which Updated should be called again.
 func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, value T) (T, bool, time.Duration, error) {
+	const minUpdateDelay = time.Millisecond * 500
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for {
@@ -130,7 +131,12 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, v
 				// some new leader has been established
 				l.lastTTL = result.TTL
 				l.leading = false
-				return result.Data, false, time.Unix(l.lastTTL, 0).Sub(now), nil
+				updateDelay := time.Unix(l.lastTTL, 0).Sub(now)
+				if updateDelay < minUpdateDelay {
+					// throttle
+					updateDelay = minUpdateDelay
+				}
+				return result.Data, false, updateDelay, nil
 			}
 		}
 
