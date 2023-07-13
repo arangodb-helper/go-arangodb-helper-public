@@ -118,7 +118,7 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, v
 
 		{
 			now := time.Now()
-			if result.TTL < now.Unix() {
+			if result.TTL < now.Unix() || l.lastTTL == 0 {
 				l.lastTTL = result.TTL
 				l.leading = false
 				goto tryLeaderElection
