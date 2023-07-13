@@ -26,8 +26,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	driver "github.com/arangodb/go-driver"
+
 	"github.com/arangodb-helper/go-helper/pkg/arangod/tests"
-	"github.com/arangodb/go-driver"
 )
 
 func TestNewDriverV1DiscoveryAdapter(t *testing.T) {
