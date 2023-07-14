@@ -22,6 +22,7 @@ package election
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	driver "github.com/arangodb/go-driver"
@@ -62,6 +63,9 @@ func (l *LeaderElectionCell[T]) GetLeaderCondition(dataValue T) agency.Condition
 }
 
 func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, cli agency.Agency, value T, assumeEmpty bool) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	trx := agency.NewTransaction("", agency.TransactionOptions{})
 
 	newTTL := time.Now().Add(l.ttl).Unix()
@@ -83,12 +87,20 @@ func (l *LeaderElectionCell[T]) tryBecomeLeader(ctx context.Context, cli agency.
 	return nil
 }
 
-func (l *LeaderElectionCell[T]) Read(ctx context.Context, cli agency.Agency) (T, error) {
+func (l *LeaderElectionCell[T]) readCell(ctx context.Context, cli agency.Agency) (leaderStruct[T], error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	var result leaderStruct[T]
 	if err := cli.ReadKey(ctx, l.key, &result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (l *LeaderElectionCell[T]) Read(ctx context.Context, cli agency.Agency) (T, error) {
+	result, err := l.readCell(ctx, cli)
+	if err != nil {
 		var def T
 		if agency.IsKeyNotFound(err) {
 			return def, nil
@@ -103,12 +115,10 @@ func (l *LeaderElectionCell[T]) Read(ctx context.Context, cli agency.Agency) (T,
 // whether we are leader and a duration after which Updated should be called again.
 func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, value T) (T, bool, time.Duration, error) {
 	const minUpdateDelay = time.Millisecond * 500
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	for {
 		assumeEmpty := false
-		var result leaderStruct[T]
-		if err := cli.ReadKey(ctx, l.key, &result); err != nil {
+		result, err := l.readCell(ctx, cli)
+		if err != nil {
 			if agency.IsKeyNotFound(err) {
 				assumeEmpty = true
 				goto tryLeaderElection
@@ -118,10 +128,17 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, v
 
 		{
 			now := time.Now()
-			if result.TTL < now.Unix() || l.lastTTL == 0 {
+			if result.TTL < now.Unix() {
+				// expired, try to become leader
 				l.lastTTL = result.TTL
 				l.leading = false
 				goto tryLeaderElection
+			}
+
+			if result.TTL > now.Unix() && !l.leading && l.lastTTL == 0 {
+				// curr leader is not expired yet, but we are not initialized yet, so initialize manually:
+				l.lastTTL = result.TTL
+				l.leading = reflect.DeepEqual(result.Data, value)
 			}
 
 			if result.TTL == l.lastTTL && l.leading {
@@ -141,11 +158,15 @@ func (l *LeaderElectionCell[T]) Update(ctx context.Context, cli agency.Agency, v
 		}
 
 	tryLeaderElection:
+		var def T
 		if err := l.tryBecomeLeader(ctx, cli, value, assumeEmpty); err == nil {
 			return value, true, l.ttl / 2, nil
 		} else if !driver.IsPreconditionFailed(err) {
-			var def T
 			return def, false, 0, err
+		} else if ctx.Err() != nil {
+			return def, false, 0, err
+		} else {
+			time.Sleep(minUpdateDelay)
 		}
 	}
 }
