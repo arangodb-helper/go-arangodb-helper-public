@@ -1,2 +1,5 @@
 .idea
 bin
+
+# direnv files
+.envrc
