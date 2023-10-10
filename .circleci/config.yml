@@ -1,0 +1,25 @@
+version: 2.1
+
+executors:
+  golang-executor:
+    docker:
+      - image: gcr.io/gcr-for-testing/golang:1.20.8
+
+jobs:
+  check-code:
+    executor: golang-executor
+    steps:
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - checkout
+      - run: make tools
+      - run: make check
+      - run: make run-unit-tests
+
+workflows:
+  version: 2
+
+  # Default workflow
+  run_tests:
+    jobs:
+      - check-code
