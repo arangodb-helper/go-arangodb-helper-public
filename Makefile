@@ -1,7 +1,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 REPO_NAME := go-helper
 
-GO_VERSION ?= 1.20.5
+GO_VERSION ?= 1.20.8
 GO_IMAGE ?= golang:$(GO_VERSION)
 
 DOCKER_NAMESPACE ?= arangodb
@@ -12,9 +12,10 @@ TEST_IMAGE_NAME ?= $(DOCKER_NAMESPACE)/$(REPO_NAME)
 TEST_IMAGE_TAG ?= latest
 TEST_IMAGE ?= $(TEST_IMAGE_NAME):$(TEST_IMAGE_TAG)
 
-
-.PHONY: run-unit-tests
 run-unit-tests:
+	go test $(TEST_OPTIONS) ./pkg/...
+
+run-unit-tests-in-docker:
 ifeq ("$(TEST_DEBUG)", "true")
 	docker build --build-arg GO_VERSION=$(GO_VERSION) --build-arg TEST_DEBUG_PACKAGE=${TEST_DEBUG_PACKAGE} -f Dockerfile.unittest.debug -t $(TEST_IMAGE) .
 	docker run -p 2345:2345 --cap-add=SYS_PTRACE --security-opt=seccomp:unconfined "${TEST_IMAGE}" ${TEST_OPTIONS}
